@@ -1,0 +1,81 @@
+- hosts: localhost
+
+  vars_prompt:
+          - name: container_name
+            prompt: "Enter The name of your Container :- "
+            private: no
+
+
+  tasks:
+          - name: "creating yum repository for docker"
+            yum_repository:
+                  name: "docker-ce"
+                  description: "docker"
+                  baseurl: "https://download.docker.com/linux/centos/7/x86_64/stable/"
+                  gpgcheck: no
+
+            
+
+          - name: "Installing Docker Services"
+            package:
+                  name: "docker-ce-18.09.1-3.el7.x86_64"
+                  state: present
+           
+          - name: "Starting The Docker Services"
+            service:
+                  name: "docker"
+                  state: started
+                  enabled: yes 
+
+          - command: pip3 install docker
+          
+          - name: "Pulling Docker Image"
+            docker_image:
+                    name: shetty452/docker_with_ssh:v1
+                    source: pull
+       
+          - name: " Creating Container {{ container_name }}  "         
+            docker_container:
+                  name: "{{ container_name }}"
+                  image: shetty452/docker_with_ssh:v1
+                  state: started
+                  interactive: yes
+                  detach: yes
+                  tty: yes
+               
+      
+          - name: "Retreiveing The IP of Docker Container"
+            community.general.docker_container_info:
+                    name: "{{ container_name }}"        
+            register: docker_info
+            
+          - debug:
+                  var: docker_info.container.NetworkSettings.IPAddress
+         
+          - name: "  Updating  the Inventory file By docker container ip"
+            blockinfile:
+                    dest: "/root/ip.txt"
+                    block: |
+                            [docker]
+                            {{ docker_info['container']['NetworkSettings']['IPAddress'] }} ansible_user=root ansible_ssh_pass=3988 ansible_connection=ssh
+
+          - meta: refresh_inventory
+
+          - pause:
+                  seconds: 30
+
+- hosts: docker
+  tasks:
+         - name : "Installing Httpd service Over Docker Container"
+           package:
+                   name: " httpd"
+                   state: present
+
+         - name: "Copying the html file"
+           copy:
+                   src: "index.html"
+                   dest: "/var/www/html"
+
+         - name: "Starting Webserver Service"
+           command: "/usr/sbin/httpd"
+           changed_when: false
